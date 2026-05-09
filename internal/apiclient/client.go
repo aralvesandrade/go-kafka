@@ -29,7 +29,8 @@ func NewClient(apiURL string) *Client {
 
 // FetchUsers makes a GET request to the API and returns the parsed users.
 func (c *Client) FetchUsers(ctx context.Context) ([]domain.User, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL, nil)
+	apiURL := fmt.Sprintf("%s/fake/users", c.apiURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("apiclient: build request: %w", err)
 	}

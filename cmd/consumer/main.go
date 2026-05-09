@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"estudos.com/mysql-kafka/config"
+	"estudos.com/mysql-kafka/cmd/consumer/config"
 	"estudos.com/mysql-kafka/internal/controller"
 	"estudos.com/mysql-kafka/internal/kafka"
 )

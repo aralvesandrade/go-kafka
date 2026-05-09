@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
-	"estudos.com/mysql-kafka/config"
+	"estudos.com/mysql-kafka/cmd/producer/config"
 	"estudos.com/mysql-kafka/internal/apiclient"
 	"estudos.com/mysql-kafka/internal/controller"
 	"estudos.com/mysql-kafka/internal/kafka"
