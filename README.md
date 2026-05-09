@@ -166,6 +166,24 @@ Testes de integração requerem Docker Compose rodando.
 
 ## Infraestrutura (docker-compose)
 
+### Subir
+
+```bash
+docker compose up -d
+```
+
+### Desligar
+
+```bash
+docker compose down
+```
+
+Para remover também os volumes (banco de dados):
+
+```bash
+docker compose down -v
+```
+
 | Serviço | Imagem | Porta |
 |---------|--------|-------|
 | MySQL | `mysql:8` | `3306` |
