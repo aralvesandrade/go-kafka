@@ -1,31 +1,42 @@
 # go-mysql-kafka
 
-Pipeline em Go que busca usuários de uma API HTTP, persiste no MySQL e publica no Kafka. Dois binários independentes compartilham pacotes internos organizados em camadas.
+Pipeline em Go que busca usuários de uma API HTTP, persiste no MySQL e publica no Kafka. Três binários independentes compartilham pacotes internos organizados em camadas.
 
 ## Visão Geral
 
 - **Producer** (`cmd/producer`): busca registros de usuários de uma API fake, salva cada `name` no MySQL e publica uma mensagem Kafka por registro inserido.
 - **Consumer** (`cmd/consumer`): worker de longa duração que lê do mesmo tópico Kafka e loga cada nome recebido.
+- **Monitor** (`cmd/monitor`): servidor HTTP que expõe o lag do consumer group via `GET /metrics/lag`.
 
 ## Estrutura do Projeto
 
 ```text
 cmd/
-├── producer/main.go          # Entrada: fetch → save → publish
-└── consumer/main.go          # Entrada: consume → log
+├── producer/
+│   ├── main.go               # Entrada: fetch → save → publish
+│   ├── config/config.go      # Config do producer (API_URL, DB_DSN, KAFKA_*)
+│   └── .env
+├── consumer/
+│   ├── main.go               # Entrada: consume → log
+│   ├── config/config.go      # Config do consumer (KAFKA_*)
+│   └── .env
+└── monitor/
+    ├── main.go               # Entrada: servidor HTTP de métricas
+    ├── config/config.go      # Config do monitor (KAFKA_*, MONITOR_ADDR)
+    └── .env
 
 internal/
 ├── domain/user.go            # Struct User (tipo de domínio compartilhado)
 ├── apiclient/client.go       # Cliente HTTP para a API de usuários
 ├── controller/
 │   ├── producer_controller.go
-│   └── consumer_controller.go
+│   ├── consumer_controller.go
+│   └── monitor_controller.go # Handler HTTP GET /metrics/lag
 ├── repository/user_repository.go  # INSERT MySQL + interface
 └── kafka/
     ├── producer.go           # Wrapper do Kafka writer
-    └── consumer.go           # Wrapper do Kafka reader
-
-config/config.go              # Carregamento de variáveis de ambiente
+    ├── consumer.go           # Wrapper do Kafka reader
+    └── lag.go                # LagChecker: consulta offsets via kafka.Client
 ```
 
 ## Pré-requisitos
@@ -58,12 +69,29 @@ Substitua `<mysql-container>` pelo nome real do container (`docker ps`).
 
 ### 3. Configurar variáveis de ambiente
 
-```bash
-export API_URL="http://localhost:3000/fake/users"
-export DB_DSN="root:secret@tcp(localhost:3306)/appdb"
-export KAFKA_BROKER="localhost:9092"
-export KAFKA_TOPIC="users"
-export KAFKA_GROUP_ID="user-ingestion-group"   # apenas consumer
+Cada binário lê o `.env` do próprio diretório. Os arquivos já estão preenchidos com os defaults locais. Para sobrescrever, edite os arquivos ou exporte as vars antes de rodar.
+
+**Producer** (`cmd/producer/.env`):
+```env
+API_URL=http://localhost:3000
+DB_DSN=root:secret@tcp(localhost:3306)/appdb
+KAFKA_BROKER=localhost:9092
+KAFKA_TOPIC=users
+```
+
+**Consumer** (`cmd/consumer/.env`):
+```env
+KAFKA_BROKER=localhost:9092
+KAFKA_TOPIC=users
+KAFKA_GROUP_ID=user-ingestion-group
+```
+
+**Monitor** (`cmd/monitor/.env`):
+```env
+KAFKA_BROKER=localhost:9092
+KAFKA_TOPIC=users
+KAFKA_GROUP_ID=user-ingestion-group
+MONITOR_ADDR=:8081
 ```
 
 ### 4. Build
@@ -71,19 +99,53 @@ export KAFKA_GROUP_ID="user-ingestion-group"   # apenas consumer
 ```bash
 go build -o bin/producer ./cmd/producer
 go build -o bin/consumer ./cmd/consumer
+go build -o bin/monitor  ./cmd/monitor
 ```
 
 ### 5. Rodar o producer
 
 ```bash
-./bin/producer
+cd cmd/producer && ../../bin/producer
 ```
 
 ### 6. Rodar o consumer
 
 ```bash
-./bin/consumer
+cd cmd/consumer && ../../bin/consumer
 ```
+
+### 7. Rodar o monitor
+
+```bash
+cd cmd/monitor && ../../bin/monitor
+```
+
+O monitor sobe na porta definida em `MONITOR_ADDR` (default `:8081`).
+
+## API do Monitor
+
+### `GET /metrics/lag`
+
+Retorna o lag atual do consumer group por partição.
+
+**200 OK:**
+```json
+{
+  "topic": "users",
+  "group": "user-ingestion-group",
+  "partitions": [
+    {
+      "partition": 0,
+      "last_offset": 150,
+      "committed_offset": 145,
+      "lag": 5
+    }
+  ],
+  "total_lag": 5
+}
+```
+
+**503 Service Unavailable:** quando não consegue conectar ao broker Kafka.
 
 ## Testes
 
@@ -97,8 +159,9 @@ Testes de integração requerem Docker Compose rodando.
 
 | Pacote | Uso |
 |--------|-----|
-| `github.com/segmentio/kafka-go` | Cliente Kafka |
+| `github.com/segmentio/kafka-go` | Cliente Kafka (producer, consumer, lag) |
 | `github.com/go-sql-driver/mysql` | Driver MySQL |
+| `github.com/joho/godotenv` | Carregamento de `.env` |
 | `github.com/stretchr/testify` | Assertions nos testes |
 
 ## Infraestrutura (docker-compose)
